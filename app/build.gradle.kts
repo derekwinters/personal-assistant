@@ -30,6 +30,8 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // Robolectric's Android runtime reaches into JDK internals on JDK 17+.
+            it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
             it.testLogging {
                 events("failed")
                 exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
