@@ -1,0 +1,27 @@
+name: release-please
+
+# Cuts releases (APP-030–034). Versions come from the Conventional Commit
+# squash titles on main: release-please keeps one release pull request open
+# with the next version and changelog, and merging it tags vX.Y.Z and
+# publishes the GitHub release. Configuration is in .github/release-please/.
+#
+# The action is pinned to a full commit SHA because this repository requires
+# it (APP-021); the version it pins is the trailing comment.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          config-file: .github/release-please/config.json
+          manifest-file: .github/release-please/manifest.json

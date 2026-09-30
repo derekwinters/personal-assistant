@@ -20,3 +20,11 @@ SHA-256 fingerprint is
 `6b:a0:b2:71:3e:bc:63:b8:86:76:7f:28:08:4a:91:ea:6f:b8:97:f1:11:f3:bf:c8:32:77:de:b9:fd:71:f7:28`,
 and CI checks every APK it builds against it. That key is public, so a debug build is for testing
 only; release builds are unsigned until stable signing keys are configured.
+
+## Releases
+
+Versions and `CHANGELOG.md` are managed by [release-please](https://github.com/googleapis/release-please)
+from the Conventional Commit squash titles merged to `main`. It keeps a release pull request open
+with the next version and changelog; merging it tags `vX.Y.Z` and publishes a GitHub release. Do
+not edit the version by hand. Release builds stay unsigned until stable signing keys exist
+(issue #24).
