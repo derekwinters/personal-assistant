@@ -64,11 +64,12 @@ jobs:
             | awk '/SHA256:/ { print $2 }' | tr -d ':' | tr 'A-F' 'a-f')
           build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
           "$build_tools/apksigner" verify --print-certs "$apk" | tee apksigner.txt
-          actual=$(awk -F': ' '/^Signer #1 certificate SHA-256 digest:/ { print $2 }' apksigner.txt)
-          signers=$(grep -c '^Signer #[0-9]* certificate SHA-256 digest:' apksigner.txt)
+          # apksigner labels signers by scheme ("Signer #1" for v1, "V2 Signer",
+          # ...), so collect the distinct certificates across every scheme.
+          actual=$(awk -F': ' '/certificate SHA-256 digest:/ { print $NF }' apksigner.txt | sort -u)
           echo "Keystore certificate SHA-256: ${expected}"
           echo "APK certificate SHA-256:      ${actual}"
-          if [ -z "$expected" ] || [ "$signers" -ne 1 ] || [ "$actual" != "$expected" ]; then
+          if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
             echo "::error::The debug APK is not signed with app/debug.keystore alone."
             exit 1
           fi
