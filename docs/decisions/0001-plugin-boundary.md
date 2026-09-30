@@ -1,6 +1,6 @@
 # 0001 — Plugin boundary
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-09-30)
 - **Issue:** #18 (part of #4)
 
 ## Context
@@ -88,7 +88,7 @@ Companion apps are found by an intent action declared in their manifest, with a 
 workout, hands off to the companion app by deep link, because Android 12+ blocks starting a
 foreground service from the background.
 
-What C would mean for the code, as a sketch for the follow-up specifications rather than part of
+What C means for the code, as a sketch for the follow-up specifications rather than part of
 this decision:
 
 - The core owns the registry, scheduling, notifications, shared data, settings and home cards.
@@ -103,11 +103,20 @@ this decision:
 
 ## Decision
 
-Pending the owner's decision.
+**C.** Derek, the owner, chose option C on 2026-09-30: one data-only contract in `:plugin-api`,
+reached in-process for built-in modules, through a content provider's `call()` for companion apps,
+and through an HTTP bridge for web APIs.
 
 ## Consequences
 
-To be written once the decision is recorded.
+- The next build step is `:plugin-api` and the plugin registry, proved with a fake plugin on the
+  home screen, before reminders (#8) is built against the contract as the first real plugin.
+- Built-in features cost what they would under A: no IPC is needed for #7–#10.
+- The companion transport (content provider, SDK, discovery and trust) is built only when a
+  companion integration, #5 or #12, is picked up. The interval trainer (#5) will need a change in
+  its own repository to expose a provider.
+- The chores backend (#6) is reached over HTTP through the bridge, not through the chores app.
+- Everything under [Not settled here](#not-settled-here) stays open as follow-ups to #4.
 
 ## Not settled here
 
