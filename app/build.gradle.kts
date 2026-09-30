@@ -30,6 +30,16 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // Hand the resolved signing configuration to DebugSigningTest (APP-003, APP-004).
+            val debugSigning = buildTypes.getByName("debug").signingConfig
+            it.systemProperty("app.signing.debug.storeFile", debugSigning?.storeFile?.path ?: "")
+            it.systemProperty("app.signing.debug.storePassword", debugSigning?.storePassword ?: "")
+            it.systemProperty("app.signing.debug.keyAlias", debugSigning?.keyAlias ?: "")
+            it.systemProperty("app.signing.debug.keyPassword", debugSigning?.keyPassword ?: "")
+            it.systemProperty(
+                "app.signing.release.configured",
+                (buildTypes.getByName("release").signingConfig != null).toString(),
+            )
             // Robolectric's Android runtime reaches into JDK internals on JDK 17+.
             it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
             it.testLogging {
