@@ -1,7 +1,9 @@
 name: android-tests
 
-# Runs the JVM unit tests (APP-020). GitHub-hosted Ubuntu runners ship the
-# Android SDK, which is why the tests are verified here.
+# Runs the JVM unit tests (APP-020), Android lint (APP-022), and builds the
+# debug APK (APP-023), checking it is signed with the committed debug keystore
+# (APP-024). GitHub-hosted Ubuntu runners ship the Android SDK, which is why
+# these are verified here.
 
 on:
   pull_request:
@@ -25,3 +27,55 @@ jobs:
       # Validates the committed wrapper jar and caches Gradle state.
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - run: ./gradlew test
+
+  lint:
+    name: Android lint (./gradlew lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - run: ./gradlew lint
+
+  debug-apk:
+    name: Debug APK (./gradlew assembleDebug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - run: ./gradlew assembleDebug
+      # APP-024: the APK must carry the committed debug key's certificate, so
+      # every run's APK installs as an update over any other run's.
+      - name: Check the APK is signed with app/debug.keystore
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          expected=$(keytool -list -v -keystore app/debug.keystore -storepass android \
+              -alias androiddebugkey \
+            | awk '/SHA256:/ { print $2 }' | tr -d ':' | tr 'A-F' 'a-f')
+          build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$build_tools/apksigner" verify --print-certs "$apk" | tee apksigner.txt
+          # apksigner labels signers by scheme ("Signer #1" for v1, "V2 Signer",
+          # ...), so collect the distinct certificates across every scheme.
+          actual=$(awk -F': ' '/certificate SHA-256 digest:/ { print $NF }' apksigner.txt | sort -u)
+          echo "Keystore certificate SHA-256: ${expected}"
+          echo "APK certificate SHA-256:      ${actual}"
+          if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+            echo "::error::The debug APK is not signed with app/debug.keystore alone."
+            exit 1
+          fi
+          echo "Debug APK signing certificate SHA-256: \`${actual}\`" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: personal-assistant-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

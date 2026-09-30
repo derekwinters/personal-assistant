@@ -15,8 +15,25 @@ android {
         versionName = "0.1.0"
     }
 
-    // Debug builds use the standard Android debug key, which is the default.
-    // Release signing is deliberately not configured until stable keys exist.
+    signingConfigs {
+        // A debug key committed on purpose, so every machine and CI run signs debug
+        // builds identically and one run's APK installs as an update over another's
+        // (APP-003). Its passwords are public: it must never sign a release build.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Release signing is deliberately not configured until stable keys exist
+        // (APP-004), so release builds are unsigned.
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -30,6 +47,16 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // Hand the resolved signing configuration to DebugSigningTest (APP-003, APP-004).
+            val debugSigning = buildTypes.getByName("debug").signingConfig
+            it.systemProperty("app.signing.debug.storeFile", debugSigning?.storeFile?.path ?: "")
+            it.systemProperty("app.signing.debug.storePassword", debugSigning?.storePassword ?: "")
+            it.systemProperty("app.signing.debug.keyAlias", debugSigning?.keyAlias ?: "")
+            it.systemProperty("app.signing.debug.keyPassword", debugSigning?.keyPassword ?: "")
+            it.systemProperty(
+                "app.signing.release.configured",
+                (buildTypes.getByName("release").signingConfig != null).toString(),
+            )
             // Robolectric's Android runtime reaches into JDK internals on JDK 17+.
             it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
             it.testLogging {

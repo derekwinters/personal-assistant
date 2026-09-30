@@ -17,6 +17,14 @@ requirement by naming its identifier in the test name or a comment.
 > **Invariant — no release signing configuration is committed.** Release signing waits for stable
 > keys; until then a release build is unsigned rather than signed with something temporary.
 
+> **Invariant — the committed debug key never signs a release build.** `app/debug.keystore` and its
+> passwords are public by design, so anything it signs can be forged by anyone. It is attached to
+> the `debug` build type only, and no other build type or signing configuration may reference it.
+
+> **Invariant — debug builds are signed with the committed keystore, never with a key generated on
+> the machine that builds them.** A per-machine key gives every CI runner a different signature,
+> and an APK from one run then cannot install as an update over an APK from another.
+
 ---
 
 ## 1. Build
@@ -26,8 +34,10 @@ requirement by naming its identifier in the test name or a comment.
   *(manual: build structure; exercised by every CI run.)*
 - **APP-002** The app supports Android 8 (API 26) and later, and compiles and targets the current
   stable API level. *(manual: build configuration in `app/build.gradle.kts`.)*
-- **APP-003** Debug builds are signed with the standard Android debug key, and no release signing
-  is configured. *(manual: needs an APK built and installed on a device.)*
+- **APP-003** Debug builds are signed with the debug keystore committed at `app/debug.keystore`,
+  using the standard debug credentials: store password `android`, key alias `androiddebugkey`,
+  key password `android`.
+- **APP-004** The release build type has no signing configuration, so a release build is unsigned.
 
 ## 2. Home screen
 
@@ -42,6 +52,16 @@ requirement by naming its identifier in the test name or a comment.
   push to `main`. *(manual: observed as the workflow run on each pull request.)*
 - **APP-021** Every action the workflow uses is pinned to a full commit SHA, with the version it
   pins as a trailing comment. *(manual: workflow configuration.)*
+- **APP-022** The workflow runs Android lint (`./gradlew lint`) on every pull request and on every
+  push to `main`, and a lint error fails the check. *(manual: observed as the workflow run on each
+  pull request.)*
+- **APP-023** The workflow builds the debug APK (`./gradlew assembleDebug`) on every pull request
+  and on every push to `main`, and uploads it as a workflow artifact that can be downloaded and
+  installed on a phone. *(manual: observed as the workflow run and its artifact.)*
+- **APP-024** The workflow checks that the debug APK it built is signed with the certificate in
+  `app/debug.keystore`, and fails otherwise, so APKs from any two runs share one signing
+  certificate. *(manual: a workflow step comparing `apksigner verify --print-certs` against the
+  keystore; installing one run's APK over another's is a device check.)*
 
 ---
 
@@ -49,8 +69,9 @@ requirement by naming its identifier in the test name or a comment.
 
 | Section | IDs | Tests |
 |---|---|---|
-| Build | APP-001–003 | manual |
+| Build | APP-001–002 | manual |
+| Build — signing | APP-003–004 | `app/src/test/kotlin/.../DebugSigningTest.kt` |
 | Home screen | APP-010–012 | `app/src/test/kotlin/.../HomeScreenTest.kt` |
-| Continuous integration | APP-020–021 | manual |
+| Continuous integration | APP-020–024 | manual |
 
-**8 requirements, 2 `auto` and 6 `manual`.**
+**12 requirements, 4 `auto` and 8 `manual`.**
