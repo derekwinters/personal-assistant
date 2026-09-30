@@ -25,6 +25,11 @@ requirement by naming its identifier in the test name or a comment.
 > the machine that builds them.** A per-machine key gives every CI runner a different signature,
 > and an APK from one run then cannot install as an update over an APK from another.
 
+> **Invariant — the version is written by release-please, never by hand.** `versionName` in
+> `app/build.gradle.kts`, `version.txt`, `CHANGELOG.md` and the release manifest change only in
+> release-please's release pull request; a version edited anywhere else drifts from the tags and
+> the changelog.
+
 ---
 
 ## 1. Build
@@ -63,6 +68,24 @@ requirement by naming its identifier in the test name or a comment.
   certificate. *(manual: a workflow step comparing `apksigner verify --print-certs` against the
   keystore; installing one run's APK over another's is a device check.)*
 
+## 4. Releases
+
+- **APP-030** A GitHub Actions workflow runs release-please on every push to `main`, and it keeps
+  one release pull request open that proposes the next version and changelog, computed from the
+  Conventional Commit squash titles merged since the last release. *(manual: observed as the
+  workflow run on each push to `main` and the release pull request it maintains.)*
+- **APP-031** Merging the release pull request tags the merge commit `vX.Y.Z` and publishes a
+  GitHub release for that tag, carrying the changelog for the version. *(manual: observed as the
+  tag and the release after the merge.)*
+- **APP-032** The app's `versionName` in `app/build.gradle.kts` is written by release-please, and
+  by nothing else, in the release pull request. *(manual: the `x-release-please-version` marker on
+  the line and the `generic` extra file in `.github/release-please/config.json`.)*
+- **APP-033** The first release is 0.1.0: the release manifest starts at 0.0.0, and before 1.0 a
+  `feat` commit bumps the minor version rather than the major. *(manual: release configuration.)*
+- **APP-034** Release pull requests carry the `no-closing-keyword` label, since a release closes no
+  issue and the `closing-keyword` check would otherwise fail it. *(manual: observed on the release
+  pull request.)*
+
 ---
 
 ## Traceability
@@ -73,5 +96,6 @@ requirement by naming its identifier in the test name or a comment.
 | Build — signing | APP-003–004 | `app/src/test/kotlin/.../DebugSigningTest.kt` |
 | Home screen | APP-010–012 | `app/src/test/kotlin/.../HomeScreenTest.kt` |
 | Continuous integration | APP-020–024 | manual |
+| Releases | APP-030–034 | manual |
 
-**12 requirements, 4 `auto` and 8 `manual`.**
+**17 requirements, 4 `auto` and 13 `manual`.**
