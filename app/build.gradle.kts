@@ -15,8 +15,25 @@ android {
         versionName = "0.1.0"
     }
 
-    // Debug builds use the standard Android debug key, which is the default.
-    // Release signing is deliberately not configured until stable keys exist.
+    signingConfigs {
+        // A debug key committed on purpose, so every machine and CI run signs debug
+        // builds identically and one run's APK installs as an update over another's
+        // (APP-003). Its passwords are public: it must never sign a release build.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Release signing is deliberately not configured until stable keys exist
+        // (APP-004), so release builds are unsigned.
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
