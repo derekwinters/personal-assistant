@@ -80,8 +80,10 @@ requirement by naming its identifier in the test name or a comment.
 - **APP-032** The app's `versionName` in `app/build.gradle.kts` is written by release-please, and
   by nothing else, in the release pull request. *(manual: the `x-release-please-version` marker on
   the line and the `generic` extra file in `.github/release-please/config.json`.)*
-- **APP-033** The first release is 0.1.0: the release manifest starts at 0.0.0, and before 1.0 a
-  `feat` commit bumps the minor version rather than the major. *(manual: release configuration.)*
+- **APP-033** The first release is 0.1.0, set by `initial-version` in
+  `.github/release-please/config.json`, because release-please ignores the manifest when no release
+  tag exists yet. After that, before 1.0 a `feat` commit bumps the minor version rather than the
+  major. *(manual: release configuration.)*
 - **APP-034** Release pull requests carry the `no-closing-keyword` label, since a release closes no
   issue and the `closing-keyword` check would otherwise fail it. *(manual: observed on the release
   pull request.)*
