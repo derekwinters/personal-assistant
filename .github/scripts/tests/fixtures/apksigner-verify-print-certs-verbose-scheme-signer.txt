@@ -1,0 +1,18 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v3.2 scheme (APK Signature Scheme v3.2): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+V2 Signer: certificate DN: CN=Interval-Trainer, O=Derek Winters, C=US
+V2 Signer: certificate SHA-256 digest: 2f596b227b890f5fcec72c176f0e325623e6261f00ddb102c4f936e9da108e09
+V2 Signer: certificate SHA-1 digest: f3f29dcfc0d1b047a6d373b01cfb92746f76744e
+V2 Signer: certificate MD5 digest: 7d5e8fac775d3768b1ee043524ba40e8
+V2 Signer: key algorithm: RSA
+V2 Signer: key size (bits): 2048
+V2 Signer: public key SHA-256 digest: bd1f51e0e530a31b6f792b1b4f469919b49b36ea1a9d13b6354c0669bf61cb01
+V2 Signer: public key SHA-1 digest: 586a088daeacb5a2b99003f6131c3826e62c3ce0
+V2 Signer: public key MD5 digest: bcd6bf5276e70113c3c9803e786bb147
