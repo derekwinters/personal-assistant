@@ -1,4 +1,4 @@
-# ai-sdlc: derekwinters/ai-sdlc@v0.4.22 hash=cc592abd9e0a80f5
+# ai-sdlc: derekwinters/ai-sdlc@v0.5.0 hash=8eba5eb41a62172e
 # Managed by `adopt`. Local edits are preserved but stop this file
 # being updated — `adopt verify` will report it.
 name: triage
@@ -34,7 +34,7 @@ jobs:
     if: github.event.label.name == 'ai-triage-queued'
     runs-on: ubuntu-latest
     steps:
-      - uses: derekwinters/ai-sdlc/.github/actions/gatekeeper@cde337066fdce3b688d2f9cd83a992f048278784 # v0.4.22
+      - uses: derekwinters/ai-sdlc/.github/actions/gatekeeper@9a51041eb76254a2cd7e306ed7ac352a2cf085d6 # v0.5.0
         with:
           mode: labeled
           fire-endpoint: ${{ secrets.ROUTINE_FIRE_URL }}
