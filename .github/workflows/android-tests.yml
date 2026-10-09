@@ -3,7 +3,11 @@ name: android-tests
 # Runs the JVM unit tests (APP-020), Android lint (APP-022), and builds the
 # debug APK (APP-023), checking it is signed with the committed debug keystore
 # (APP-024). GitHub-hosted Ubuntu runners ship the Android SDK, which is why
-# these are verified here.
+# these are verified here. It also runs the release-signature gate's unit tests
+# (APP-053), which need only python3.
+#
+# This workflow runs on pull requests, so it must never reference the release
+# key's secrets (APP-052); only release-please.yml may.
 
 on:
   pull_request:
@@ -79,3 +83,15 @@ jobs:
           name: personal-assistant-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  # APP-053: the release-signature gate's tests, and the workflow checks beside
+  # them (APP-051, APP-052). Standard library only, so the runner's python3 is
+  # all they need: no Android SDK and no setup action.
+  release-gate-tests:
+    name: Release-signature gate tests (python3 -m unittest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run the release-signature gate's unit tests
+        run: python3 -m unittest discover -s .github/scripts/tests -v
