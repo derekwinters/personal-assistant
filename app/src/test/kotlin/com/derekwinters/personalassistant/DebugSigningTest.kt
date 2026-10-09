@@ -3,6 +3,7 @@ package com.derekwinters.personalassistant
 import java.io.File
 import java.security.KeyStore
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,9 +39,38 @@ class DebugSigningTest {
         )
     }
 
-    // APP-004: release has no signing configuration, so the public debug key never signs it.
+    // APP-004, APP-040: release signing is configured exactly when all four release-key
+    // environment variables are set and non-blank. CI's unit-test job has none of them, so there
+    // this asserts a release build is unsigned; a machine holding the key gets it configured.
     @Test
-    fun `APP-004 release builds have no signing configuration`() {
-        assertEquals("false", property("release.configured"))
+    fun `APP-004 APP-040 release builds are signed only when the release key is supplied`() {
+        val keyVariables = listOf(
+            "ANDROID_KEYSTORE_PATH",
+            "ANDROID_KEYSTORE_PASSWORD",
+            "ANDROID_KEY_ALIAS",
+            "ANDROID_KEY_ALIAS_PASSWORD",
+        )
+        // Gradle reports whether it saw all four; this JVM inherits Gradle's environment, so the
+        // report must agree with what is actually set here.
+        val keySupplied = property("release.keySupplied").toBooleanStrict()
+        assertEquals(
+            "app.signing.release.keySupplied must say whether all of $keyVariables were set",
+            keyVariables.all { !System.getenv(it).isNullOrBlank() },
+            keySupplied,
+        )
+        assertEquals(keySupplied.toString(), property("release.configured"))
+    }
+
+    // APP-041: whatever the environment, release never uses the public debug key.
+    @Test
+    fun `APP-041 release builds never use the debug signing configuration`() {
+        assertEquals("false", property("release.usesDebugConfig"))
+        val releaseStore = property("release.storeFile")
+        if (releaseStore.isNotEmpty()) {
+            assertNotEquals(
+                File("debug.keystore").canonicalPath,
+                File(releaseStore).canonicalPath,
+            )
+        }
     }
 }

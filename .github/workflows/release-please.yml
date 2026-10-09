@@ -5,23 +5,268 @@ name: release-please
 # with the next version and changelog, and merging it tags vX.Y.Z and
 # publishes the GitHub release. Configuration is in .github/release-please/.
 #
-# The action is pinned to a full commit SHA because this repository requires
+# build-and-attach then builds the release APK from that tag, signs it with the
+# stable release key, checks the signature, and attaches it to the release
+# (APP-047). It runs in this same workflow run because release-please pushes its
+# tag with the default GITHUB_TOKEN, and GitHub starts no workflow run from an
+# event that token caused, so a separate tag-triggered workflow would never fire.
+#
+# backfill-release-apk does the same for an existing tag when this workflow is
+# run by hand with `backfill_tag` set (APP-050); release-please does not run then.
+#
+# Both jobs run the release-signature gate from a second checkout of `main`,
+# never from the tag being built (APP-051): a tag carries whatever copy of the
+# gate existed when it was cut, and a later fix to the gate must still protect it.
+#
+# The release key exists only as repository secrets, and only this workflow,
+# which no pull request can trigger, references them (APP-052). The decoded
+# keystore lives under $RUNNER_TEMP and is deleted however the job ends (APP-049).
+# No checkout keeps the job's write token in .git/config, since the build runs
+# Gradle; the upload step alone is handed the token.
+#
+# Every action is pinned to a full commit SHA because this repository requires
 # it (APP-021); the version it pins is the trailing comment.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      backfill_tag:
+        description: >-
+          Existing release tag (e.g. v0.2.0) whose GitHub release is missing its signed APK.
+          Leave empty for an ordinary run. When set, only backfill-release-apk runs, against
+          this tag; release-please and build-and-attach are skipped.
+        required: false
+        type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   release-please:
+    # Skipped on a backfill dispatch, which targets a release that already exists.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.backfill_tag != '') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release
         with:
           config-file: .github/release-please/config.json
           manifest-file: .github/release-please/manifest.json
+
+  build-and-attach:
+    name: Build, verify and attach the release APK
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Uploads release assets.
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      # APP-048: fail before building anything, naming what is missing. Each
+      # secret reaches this step only as "true" or "false", never as its value.
+      - name: Check the release key secrets are set
+        env:
+          HAS_ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD != '' }}
+          HAS_ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS \
+              ANDROID_KEY_ALIAS_PASSWORD ANDROID_KEYSTORE_SHA256; do
+            has="HAS_${name}"
+            if [ "${!has}" != "true" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error title=Release signing::Missing repository secret(s): ${missing[*]}. A release APK is built only with the stable release key."
+            exit 1
+          fi
+
+      # The exact commit release-please tagged, with its version bump applied.
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      # APP-051: the gate always comes from main, into its own path.
+      - name: Check out main for the release-signature gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: release-gate
+          persist-credentials: false
+
+      # Provisioned the same way android-tests.yml provisions them.
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # APP-049: Gradle needs a keystore file. It is written under $RUNNER_TEMP,
+      # readable only by the runner user, and never printed.
+      - name: Decode the release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keystore="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+
+      # APP-040: app/build.gradle.kts signs the release build only when all four
+      # ANDROID_KEYSTORE_PATH / _PASSWORD / ANDROID_KEY_ALIAS / _PASSWORD are set.
+      - name: Assemble the release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      # APP-044: nothing is uploaded unless the APK carries the release
+      # certificate alone. Runs main's copy of the gate (APP-051).
+      - name: Verify the release signature
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+        run: >-
+          python3 release-gate/.github/scripts/verify_release_signature.py
+          app/build/outputs/apk/release/app-release.apk
+
+      # APP-047. The runner's gh CLI does the upload, so no further action needs
+      # pinning. --clobber makes a re-run replace its own earlier assets.
+      - name: Attach the release APK and its SHA-256 to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset="personal-assistant-${TAG}.apk"
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir -p "$assets"
+          cp app/build/outputs/apk/release/app-release.apk "$assets/$asset"
+          cd "$assets"
+          sha256sum "$asset" > "$asset.sha256"
+          cat "$asset.sha256"
+          gh release upload "$TAG" "$asset" "$asset.sha256" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # APP-050: a manual, dispatch-only path that attaches a signed APK to a tag
+  # whose GitHub release already exists. Only someone who can run this workflow
+  # by hand can set `backfill_tag`; no pull request can reach it (APP-052).
+  backfill-release-apk:
+    name: Backfill the release APK onto an existing tag (manual)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.backfill_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Uploads release assets.
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.backfill_tag }}
+    steps:
+      # APP-048, as in build-and-attach.
+      - name: Check the release key secrets are set
+        env:
+          HAS_ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAS_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAS_ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD != '' }}
+          HAS_ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS \
+              ANDROID_KEY_ALIAS_PASSWORD ANDROID_KEYSTORE_SHA256; do
+            has="HAS_${name}"
+            if [ "${!has}" != "true" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error title=Release signing::Missing repository secret(s): ${missing[*]}. A release APK is built only with the stable release key."
+            exit 1
+          fi
+
+      # The commit the existing release already points at.
+      - name: Check out the tag to backfill
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.backfill_tag }}
+          persist-credentials: false
+
+      # APP-051: the gate always comes from main, into its own path. Backfilling
+      # exists to recover releases older than the current gate.
+      - name: Check out main for the release-signature gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: release-gate
+          persist-credentials: false
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # APP-049, as in build-and-attach.
+      - name: Decode the release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keystore="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+
+      - name: Assemble the release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      - name: Verify the release signature
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+        run: >-
+          python3 release-gate/.github/scripts/verify_release_signature.py
+          app/build/outputs/apk/release/app-release.apk
+
+      - name: Attach the release APK and its SHA-256 to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset="personal-assistant-${TAG}.apk"
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir -p "$assets"
+          cp app/build/outputs/apk/release/app-release.apk "$assets/$asset"
+          cd "$assets"
+          sha256sum "$asset" > "$asset.sha256"
+          cat "$asset.sha256"
+          gh release upload "$TAG" "$asset" "$asset.sha256" --clobber --repo "$GITHUB_REPOSITORY"

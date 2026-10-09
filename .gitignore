@@ -34,3 +34,6 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Python bytecode (the release-signature gate and its tests)
+__pycache__/
