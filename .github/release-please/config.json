@@ -4,6 +4,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
+      "initial-version": "0.1.0",
       "package-name": "personal-assistant",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
