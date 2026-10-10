@@ -1,5 +1,5 @@
 ---
-# ai-sdlc: derekwinters/ai-sdlc@v0.4.22 hash=4fbd6e3eb50cba85
+# ai-sdlc: derekwinters/ai-sdlc@v0.5.0 hash=53bc662ea5dbc0d4
 # Managed by `adopt`. Local edits are preserved but stop this file
 # being updated — `adopt verify` will report it.
 name: ai-sdlc
@@ -18,7 +18,7 @@ allowed-tools: Read, Grep, Glob, Bash
 
 This repository has adopted [ai-sdlc](https://github.com/derekwinters/ai-sdlc), which owns its
 pipeline, its label taxonomy, its release flow and its pull-request gates. It is
-installed at **v0.4.22**.
+installed at **v0.5.0**.
 
 ## Read these, in this order
 
